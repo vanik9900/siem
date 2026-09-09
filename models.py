@@ -1,0 +1,40 @@
+from sqlalchemy import Column, Integer, String, Float, DateTime
+from datetime import datetime
+
+from database import Base
+
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    username = Column(String)
+    hostname = Column(String)
+    source_ip = Column(String)
+
+    event_type = Column(String)
+    failed_attempts = Column(Integer, default=0)
+
+    severity = Column(String, default="LOW")
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    event_id = Column(Integer)
+
+    title = Column(String)
+    severity = Column(String)
+
+    risk_score = Column(Float, default=0)
+
+    status = Column(String, default="OPEN")
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
