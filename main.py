@@ -10,7 +10,7 @@ app = FastAPI(
 @app.get("/")
 def root():
     return {
-        "project": "SentinelAI",
+        "project": "siem",
         "status": "running"
     }
 
