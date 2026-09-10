@@ -6,6 +6,7 @@ from database import Base, engine, SessionLocal
 from models import SecurityEvent, Alert
 from detection import detect_event
 from ml_detector import detect_anomaly
+from mitre import map_event_to_mitre
 
 
 # Create database tables
