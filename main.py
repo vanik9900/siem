@@ -7,6 +7,8 @@ from models import SecurityEvent, Alert
 from detection import detect_event
 from ml_detector import detect_anomaly
 from mitre import map_event_to_mitre
+from risk_engine import calculate_risk
+from soc_report import generate_soc_report
 
 
 # Create database tables
@@ -73,23 +75,33 @@ def create_event(event: EventInput):
         #  Run ML anomaly detection
         ml_result = detect_anomaly(event.failed_attempts)
 
-        saved_alerts = []
         #adding mitre
         mitre = map_event_to_mitre(
         event.event_type,
         event.failed_attempts
         )
 
+        saved_alerts = []
+
         # 4. Create alerts
         for detected in detected_alerts:
+
+            risk_result = calculate_risk(
+                base_risk=detected["risk_score"],
+                ml_result=ml_result,
+                mitre_result=mitre,
+                failed_attempts=event.failed_attempts,
+                hostname=event.hostname
+            )
 
             alert = Alert(
                 event_id=event_id,
                 title=detected["title"],
-                severity=detected["severity"],
-                risk_score=detected["risk_score"],
+                severity=risk_result["risk_level"],
+                risk_score=risk_result["risk_score"],
                 status="OPEN"
             )
+
 
             db.add(alert)
             db.commit()
@@ -103,12 +115,23 @@ def create_event(event: EventInput):
                 "status": alert.status
             })
 
-        # 5. Return result
+             # Generate SOC Report
+            soc_report = generate_soc_report(
+                security_event,
+                saved_alerts,
+                ml_result,
+                mitre,
+                risk_result if detected_alerts else None
+            )
+
+        # Return result
         return {
             "event_id": event_id,
             "alerts": saved_alerts,
             "ml_detection": ml_result,
-            "mitre": mitre
+            "mitre": mitre,
+            "risk_analysis": risk_result if detected_alerts else None,
+            "soc_report": soc_report
         }
 
     except Exception as e:
