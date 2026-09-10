@@ -38,3 +38,26 @@ class Alert(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+
+class Incident(Base):
+    __tablename__ = "incidents"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    title = Column(String)
+    severity = Column(String)
+    risk_score = Column(Float, default=0)
+
+    status = Column(String, default="OPEN")
+
+    username = Column(String)
+    hostname = Column(String)
+    source_ip = Column(String)
+
+    mitre_technique = Column(String)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )
