@@ -74,6 +74,11 @@ def create_event(event: EventInput):
         ml_result = detect_anomaly(event.failed_attempts)
 
         saved_alerts = []
+        #adding mitre
+        mitre = map_event_to_mitre(
+        event.event_type,
+        event.failed_attempts
+        )
 
         # 4. Create alerts
         for detected in detected_alerts:
@@ -102,7 +107,8 @@ def create_event(event: EventInput):
         return {
             "event_id": event_id,
             "alerts": saved_alerts,
-            "ml_detection": ml_result
+            "ml_detection": ml_result,
+            "mitre": mitre
         }
 
     except Exception as e:
