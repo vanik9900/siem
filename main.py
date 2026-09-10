@@ -9,6 +9,8 @@ from ml_detector import detect_anomaly
 from mitre import map_event_to_mitre
 from risk_engine import calculate_risk
 from soc_report import generate_soc_report
+from threat_intel import check_ip_reputation
+from correlation import correlate_events
 
 
 # Create database tables
@@ -44,7 +46,6 @@ def health():
         "status": "ok"
     }
 
-
 @app.post("/api/events")
 def create_event(event: EventInput):
 
@@ -64,26 +65,41 @@ def create_event(event: EventInput):
         db.add(security_event)
         db.commit()
 
-        # IMPORTANT:
-        # Store the ID before closing the database session
         db.refresh(security_event)
         event_id = security_event.id
 
-        # 3. Run detection
+        # 3. Correlate with previous events
+        correlation = correlate_events(
+            db,
+            security_event
+        )
+
+        # 4. Rule-based detection
         detected_alerts = detect_event(security_event)
 
-        #  Run ML anomaly detection
-        ml_result = detect_anomaly(event.failed_attempts)
+        # 5. ML anomaly detection
+        ml_result = detect_anomaly(
+            event.failed_attempts
+        )
 
-        #adding mitre
+        # 6. MITRE ATT&CK mapping
         mitre = map_event_to_mitre(
-        event.event_type,
-        event.failed_attempts
+            event.event_type,
+            event.failed_attempts
+        )
+
+        # 7. Threat Intelligence
+        threat_intel = check_ip_reputation(
+            event.source_ip
         )
 
         saved_alerts = []
 
-        # 4. Create alerts
+        # Default values
+        risk_result = None
+        soc_report = None
+
+        # 8. Create alerts
         for detected in detected_alerts:
 
             risk_result = calculate_risk(
@@ -102,7 +118,6 @@ def create_event(event: EventInput):
                 status="OPEN"
             )
 
-
             db.add(alert)
             db.commit()
             db.refresh(alert)
@@ -115,22 +130,24 @@ def create_event(event: EventInput):
                 "status": alert.status
             })
 
-             # Generate SOC Report
-            soc_report = generate_soc_report(
-                security_event,
-                saved_alerts,
-                ml_result,
-                mitre,
-                risk_result if detected_alerts else None
-            )
+        # 9. Generate SOC Report
+        soc_report = generate_soc_report(
+            security_event,
+            saved_alerts,
+            ml_result,
+            mitre,
+            risk_result
+        )
 
-        # Return result
+        # 10. Return complete analysis
         return {
             "event_id": event_id,
             "alerts": saved_alerts,
             "ml_detection": ml_result,
             "mitre": mitre,
-            "risk_analysis": risk_result if detected_alerts else None,
+            "threat_intelligence": threat_intel,
+            "correlation": correlation,
+            "risk_analysis": risk_result,
             "soc_report": soc_report
         }
 
@@ -144,7 +161,6 @@ def create_event(event: EventInput):
 
     finally:
         db.close()
-
 
 @app.get("/api/alerts")
 def get_alerts():
