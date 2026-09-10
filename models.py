@@ -61,3 +61,22 @@ class Incident(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+class ResponseAction(Base):
+    __tablename__ = "response_actions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    incident_id = Column(Integer)
+
+    action = Column(String)
+    reason = Column(String)
+
+    status = Column(String, default="SIMULATED")
+
+    performed_by = Column(String, default="SentinelAI")
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow
+    )

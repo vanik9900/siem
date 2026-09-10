@@ -1,9 +1,10 @@
+import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional
 
 from database import Base, engine, SessionLocal
-from models import SecurityEvent, Alert, Incident
+from models import SecurityEvent, Alert, Incident, ResponseAction   
 from detection import detect_event
 from ml_detector import detect_anomaly
 from mitre import map_event_to_mitre
@@ -12,6 +13,8 @@ from soc_report import generate_soc_report
 from threat_intel import check_ip_reputation
 from correlation import correlate_events
 from vulnerability_intel import check_vulnerabilities
+from fastapi.responses import FileResponse
+from pdf_report import generate_pdf_report
 
 
 # Create database tables
@@ -164,6 +167,44 @@ def create_event(event: EventInput):
                 db.commit()
                 db.refresh(incident)
 
+            response_action = None
+
+            if incident:
+
+                if incident.severity == "CRITICAL":
+                    action = "ISOLATE_HOST_RECOMMENDED"
+                    reason = (
+                        "Critical incident detected. "
+                        "Host isolation is recommended "
+                        "for analyst review."
+                    )
+
+                elif incident.severity == "HIGH":
+                    action = "INCREASE_MONITORING"
+                    reason = (
+                        "High-risk incident detected. "
+                        "Increase monitoring of the affected asset."
+                    )
+
+                else:
+                    action = "CONTINUE_MONITORING"
+                    reason = (
+                        "Lower-risk event detected. "
+                        "Continue monitoring."
+                    )
+
+                response_action = ResponseAction(
+                    incident_id=incident.id,
+                    action=action,
+                    reason=reason,
+                    status="SIMULATED",
+                    performed_by="SentinelAI"
+                )
+
+                db.add(response_action)
+                db.commit()
+                db.refresh(response_action)
+
         # 9. Generate SOC Report
         soc_report = generate_soc_report(
             security_event,
@@ -193,6 +234,13 @@ def create_event(event: EventInput):
                 "source_ip": incident.source_ip,
                 "mitre_technique": incident.mitre_technique
             } if incident else None,
+             "response_action": {
+                "id": response_action.id,
+                "action": response_action.action,
+                "reason": response_action.reason,
+                "status": response_action.status,
+                "performed_by": response_action.performed_by
+            } if response_action else None,
             "risk_analysis": risk_result,
             "soc_report": soc_report
         }
@@ -263,6 +311,75 @@ def get_incidents():
                 "source_ip": incident.source_ip,
                 "mitre_technique": incident.mitre_technique,
                 "created_at": incident.created_at
+            })
+
+        return result
+
+    finally:
+        db.close()
+
+
+@app.get("/api/incidents/{incident_id}/report")
+def download_incident_report(incident_id: int):
+
+    db = SessionLocal()
+
+    try:
+
+        incident = (
+            db.query(Incident)
+            .filter(Incident.id == incident_id)
+            .first()
+        )
+
+        if not incident:
+            return {
+                "error": "Incident not found"
+            }
+
+        file_path = (
+            f"incident_report_{incident.id}.pdf"
+        )
+
+        generate_pdf_report(
+            incident,
+            file_path
+        )
+
+        return FileResponse(
+            file_path,
+            media_type="application/pdf",
+            filename=f"SentinelAI_Incident_{incident.id}.pdf"
+        )
+
+    finally:
+        db.close()
+
+@app.get("/api/response-actions")
+def get_response_actions():
+
+    db = SessionLocal()
+
+    try:
+
+        actions = (
+            db.query(ResponseAction)
+            .order_by(ResponseAction.created_at.desc())
+            .all()
+        )
+
+        result = []
+
+        for action in actions:
+
+            result.append({
+                "id": action.id,
+                "incident_id": action.incident_id,
+                "action": action.action,
+                "reason": action.reason,
+                "status": action.status,
+                "performed_by": action.performed_by,
+                "created_at": action.created_at
             })
 
         return result
